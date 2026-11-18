@@ -99,7 +99,7 @@ html.embed .apptabs{display:none}
    Paste your Firebase Realtime Database URL between the quotes (no trailing slash).
    Example: "https://my-project-default-rtdb.asia-southeast1.firebasedatabase.app"
    Leave empty = offline mode (data saved on this device only). */
-const FB="https://floor-polishing-default-rtdb.asia-southeast1.firebasedatabase.app/";
+let FB="https://floor-polishing-default-rtdb.asia-southeast1.firebasedatabase.app/";FB=FB.replace(/\/+$/,"");
 const FB_KEY="";   /* Firebase Web API key (Project settings > General). Empty = anyone can edit (no login) */
 const EDIT_EMAIL="";   /* editor account email. If set, editing asks for a 4-digit PIN only (Firebase password = "pin" + PIN) */
 const FPATH="polish-fsa-dch/v5";   /* change to a long random word for more privacy */
@@ -138,8 +138,8 @@ async function tok(){if(!FB_KEY||!AUTH.refreshToken)return null;
  return AUTH.idToken}
 const au=async()=>{const t=await tok();return t?"?auth="+t:""};
 const setSync=(t,c)=>{const e=document.getElementById("sync");if(e){e.textContent=t;e.style.color=c}};
-const okS=()=>setSync("\u25cf Online \u00b7 synced","#9be3b0"),errS=()=>{dirty=true;setSync("\u25cf Sync error \u2013 saved on this device","#ffd27a")};
-async function push(path,val){if(!FB||!canEdit())return;try{const r=await fetch(`${FB}/${FPATH}/${path}.json`+await au(),val==null?{method:"DELETE"}:{method:"PUT",body:JSON.stringify(val)});if(!r.ok)throw 0;okS()}catch(e){errS()}}
+const okS=()=>setSync("\u25cf Online \u00b7 synced","#9be3b0"),errS=c=>{dirty=true;setSync("\u25cf Sync error"+(c&&c.s?" ("+c.s+(c.m?": "+c.m:"")+")":"")+" \u2013 saved on this device","#ffd27a")};
+async function push(path,val){if(!FB||!canEdit())return;try{const r=await fetch(`${FB}/${FPATH}/${path}.json`+await au(),val==null?{method:"DELETE"}:{method:"PUT",body:JSON.stringify(val)});if(!r.ok){let m="";try{m=(await r.json()).error||""}catch(_){}throw{s:r.status,m}}okS()}catch(e){errS(e)}}
 const norm=o=>{const r={};Object.keys(o||{}).forEach(k=>{if(o[k]!=null)r[k]=o[k]});return r};
 async function pull(){if(!FB)return;if(document.getElementById("bk").classList.contains("on")){setTimeout(pull,2000);return}
  try{if(dirty&&canEdit()){const r0=await fetch(`${FB}/${FPATH}.json`+await au(),{method:"PUT",body:JSON.stringify({dates:S.dates,starts:S.starts||{},done:S.done,area:S.area||{}})});if(!r0.ok)throw 0;dirty=false}
@@ -149,7 +149,7 @@ async function pull(){if(!FB)return;if(document.getElementById("bk").classList.c
 let es=null,tm=null;
 function live(){if(!FB||es||!window.EventSource)return;
  try{es=new EventSource(`${FB}/${FPATH}.json`);const go=()=>{clearTimeout(tm);tm=setTimeout(pull,250)};
- es.addEventListener("put",go);es.addEventListener("patch",go);es.onerror=()=>setSync("\u25cf Reconnecting\u2026","#ffd27a")}catch(e){}}
+ es.addEventListener("put",go);es.addEventListener("patch",go);es.onopen=()=>{window.sseOK=true};es.onerror=()=>{window.sseOK=false;setSync("\u25cf Reconnecting\u2026","#ffd27a")}}catch(e){}}
 const refEl=document.getElementById("ref");refEl.value=iso(new Date());
 function status(p){const m=S.dates[p.id],d=S.done[p.id]||{},R=refEl.value;const k=STEPS.filter((s,i)=>d[i]).length;
  const late=STEPS.some((s,i)=>d[i]?d[i]>dueOf(p.id,i):dueOf(p.id,i)<R);
@@ -180,12 +180,12 @@ function render(){renum();const cnt={done:0,red:0,yellow:0,green:0,base:0};
 function openM(p){const m=S.dates[p.id],d=S.done[p.id]||(S.done[p.id]={}),R=refEl.value;
  let h=`<h2>Part ${NUM[p.id]} · ${p.z.n}</h2><div class="sub">Start: <input type="date" id="sd" value="${stDate(p.id)}"> &nbsp; Finish (last step): <input type="date" id="md" value="${m}"></div><div class="sub" style="margin-top:6px">Area (m²): <input type="number" id="ar" value="${areaOf(p.id)}" style="width:90px;padding:5px;border:1.5px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink)"></div>`;
  STEPS.forEach((s,i)=>{const due=dueOf(p.id,i),late=!d[i]&&due<R,ok=d[i]&&d[i]<=due;
-  h+=`<label class="row ${late||(d[i]&&!ok)?"late":ok?"ok":""}"><input type="checkbox" data-i="${i}" ${d[i]?"checked":""}><span>${i+1}. ${s.n}<small>Due ${fmt(due)}${d[i]?" · done "+fmt(d[i]):""}</small></span><span class="tag">${late?"OVERDUE":d[i]?(ok?"ON PLAN":"LATE DONE"):""}</span></label>`});
+  h+=`<label class="row ${late||(d[i]&&!ok)?"late":ok?"ok":""}"><input type="checkbox" data-i="${i}" ${d[i]?"checked":""}><span>${i+1}. ${s.n}<small>Due ${fmt(due)}</small>${d[i]?`<small>Done: <input type="date" data-dd="${i}" value="${d[i]}" style="font-size:11.5px;padding:2px 4px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink)"></small>`:""}</span><span class="tag">${late?"OVERDUE":d[i]?(ok?"ON PLAN":"LATE DONE"):""}</span></label>`});
  h+=`<div style="text-align:right;margin-top:12px"><button id="x">Close</button></div>`;
  const md=document.getElementById("md");md.innerHTML=h;bk.classList.add("on");
  md.querySelector("#md").onchange=e=>{const v=e.target.value;if(v){S.starts=S.starts||{};S.dates[p.id]=v;push("dates/"+p.id,v);if(S.starts[p.id]&&S.starts[p.id]>v){S.starts[p.id]=v;push("starts/"+p.id,v)}save();render();openM(p)}};
  md.querySelectorAll("[data-i]").forEach(c=>c.onchange=()=>{const i=c.dataset.i;if(c.checked)d[i]=R;else delete d[i];push(`done/${p.id}/${i}`,c.checked?R:null);save();render();openM(p)});
- md.querySelector("#sd").onchange=e=>{const v=e.target.value;if(v){S.starts=S.starts||{};S.starts[p.id]=v;push("starts/"+p.id,v);{const f=add(v,STEPS.length-1);S.dates[p.id]=f;push("dates/"+p.id,f)}save();render();openM(p)}};md.querySelector("#ar").onchange=e=>{S.area=S.area||{};S.area[p.id]=e.target.value;push("area/"+p.id,e.target.value||null);save();render()};md.querySelector("#x").onclick=()=>bk.classList.remove("on");if(!canEdit()){md.querySelectorAll("input").forEach(i=>i.disabled=true);md.insertAdjacentHTML("afterbegin",'<div class="sub" style="color:#b4233f;font-weight:700">View only \u2014 use "Edit login" to make changes</div>')}}
+ md.querySelectorAll("[data-dd]").forEach(x=>x.onchange=()=>{if(x.value){d[x.dataset.dd]=x.value;push(`done/${p.id}/${x.dataset.dd}`,x.value);save();render();openM(p)}});md.querySelector("#sd").onchange=e=>{const v=e.target.value;if(v){S.starts=S.starts||{};S.starts[p.id]=v;push("starts/"+p.id,v);{const f=add(v,STEPS.length-1);S.dates[p.id]=f;push("dates/"+p.id,f)}save();render();openM(p)}};md.querySelector("#ar").onchange=e=>{S.area=S.area||{};S.area[p.id]=e.target.value;push("area/"+p.id,e.target.value||null);save();render()};md.querySelector("#x").onclick=()=>bk.classList.remove("on");if(!canEdit()){md.querySelectorAll("input").forEach(i=>i.disabled=true);md.insertAdjacentHTML("afterbegin",'<div class="sub" style="color:#b4233f;font-weight:700">View only \u2014 use "Edit login" to make changes</div>')}}
 const bk=document.getElementById("bk");bk.onclick=e=>{if(e.target==bk)bk.classList.remove("on")};
 refEl.onchange=render;document.getElementById("today").onclick=()=>{refEl.value=iso(new Date());render()};
 document.getElementById("reset").onclick=async()=>{if(!canEdit()){alert("Please log in (Edit login) to reset data.");return}if(confirm(FB?"Clear ALL ticks and edited dates for EVERYONE (online)?":"Clear all ticks and edited dates?")){try{localStorage.removeItem(KEY)}catch(e){}if(FB){try{await fetch(`${FB}/${FPATH}.json`+await au(),{method:"DELETE"})}catch(e){}}location.reload()}};
@@ -245,5 +245,5 @@ if(EDIT_EMAIL){$("lem").style.display="none";$("lpw").placeholder="4-digit PIN";
 $("lcan").onclick=()=>lg.classList.remove("on");
 $("lok").onclick=async()=>{if(EDIT_EMAIL&&!/^\d{4}$/.test($("lpw").value)){$("lerr").textContent="Enter the 4-digit PIN";return}try{await login(EDIT_EMAIL||$("lem").value.trim(),EDIT_EMAIL?"pin"+$("lpw").value:$("lpw").value);$("lpw").value="";lg.classList.remove("on");updLogin();pull()}catch(e){$("lerr").textContent=EDIT_EMAIL?"Wrong PIN, or too many attempts – wait a few minutes":"Login failed: "+(e.message||"check email / password")}};
 $("lpw").onkeydown=e=>{if(e.key=="Enter")$("lok").click()};
-pull();live();setInterval(pull,30000);document.addEventListener("visibilitychange",()=>{if(!document.hidden){if(es&&es.readyState==2){es=null;live()}pull()}});addEventListener("online",()=>{if(es&&es.readyState==2){es=null;live()}pull()});
+pull();live();setInterval(()=>{if(!window.sseOK)pull()},5000);setInterval(pull,60000);document.addEventListener("visibilitychange",()=>{if(!document.hidden){if(es&&es.readyState==2){es=null;live()}pull()}});addEventListener("online",()=>{if(es&&es.readyState==2){es=null;live()}pull()});
 </script></body></html>
