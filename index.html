@@ -68,8 +68,7 @@ body{display:block;height:auto;padding:6px 8px}
 #plist small{color:var(--mut);display:block;font-size:11.5px}#plist .pk{font-weight:700;font-size:12px}
 @media screen and (orientation:portrait) and (max-width:820px){.plan{aspect-ratio:1683/669}
 .plan img{inset:0;left:0;top:0;width:100%;height:100%;transform:none}
-.p{border-width:1.5px}.p .n{font-size:3.1cqw;padding:0 .8cqw;border-width:1px}.p .d,.p .a{display:none}.p .c{font-size:1.9cqw;padding:0 .6cqw;top:.3cqw;right:.3cqw}
-#plist{display:block}}
+.p{border-width:1.5px}.p .n{font-size:1.7cqw;padding:0 .5cqw;border-width:1px}.p .d{font-size:.9cqw;padding:0 .3cqw;margin-top:.2cqw}.p .a{font-size:.85cqw;top:.25cqw}.p .c{font-size:.75cqw;padding:0 .4cqw;top:.15cqw;right:.2cqw}}
 
 
 /* ===== Work-area tabs (same bar as the main CHB2A schedule site) ===== */
@@ -102,6 +101,8 @@ html.embed .apptabs{display:none}
 let FB="https://floor-polishing-default-rtdb.asia-southeast1.firebasedatabase.app/";FB=FB.replace(/\/+$/,"");
 const FB_KEY="";   /* Firebase Web API key (Project settings > General). Empty = anyone can edit (no login) */
 const EDIT_EMAIL="";   /* editor account email. If set, editing asks for a 4-digit PIN only (Firebase password = "pin" + PIN) */
+const EDIT_CODE="1";   /* simple code: it must be typed before anyone can edit. CHANGE it to your own. It is visible in the page source, so it only stops accidental edits */
+const PIN_HASH="";   /* simple PIN mode (no Firebase login): paste the code made by  <your-site>/#makepin=1234  here. Only stops accidental edits */
 const FPATH="polish-fsa-dch/v5";   /* change to a long random word for more privacy */
 const STEPS=[{n:"Clean surface"},{n:"Grind to expose concrete"},{n:"Apply chemical hardener"},{n:"Further polish"},{n:"Final polish \u2013 smooth, glossy finish"}];
 const ZONES=[{n:"FSA",x0:4,x1:16,c:"#ebc9d3"},{n:"DCH 1",x0:16,x1:38.8,c:"#d7cce6"},{n:"DCH 2",x0:38.8,x1:59,c:"#f4d9c9"},{n:"DCH 3",x0:59,x1:78.8,c:"#cfe0e3"},{n:"DCH 4",x0:78.8,x1:98.5,c:"#e3d0e0"}];
@@ -131,7 +132,11 @@ const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 let dirty=false;
 const LS="polish-auth";let AUTH={};try{AUTH=JSON.parse(localStorage.getItem(LS)||"{}")}catch(e){}
 const saveAuth=()=>{try{localStorage.setItem(LS,JSON.stringify(AUTH))}catch(e){}};
-const canEdit=()=>!FB||!FB_KEY||!!AUTH.refreshToken;
+const PINTOK="ok:"+(PIN_HASH||EDIT_CODE);const PINOK=()=>{try{return !!(PIN_HASH||EDIT_CODE)&&localStorage.getItem("polish-pin")===PINTOK}catch(e){return false}};
+const PINMODE=!!EDIT_EMAIL||(!(FB&&FB_KEY)&&!!(PIN_HASH||EDIT_CODE));let pendingP=null;
+const canEdit=()=>FB&&FB_KEY?!!AUTH.refreshToken:((PIN_HASH||EDIT_CODE)?PINOK():true);
+const reopen=()=>{if(pendingP){const q=pendingP;pendingP=null;openM(q)}};
+async function sha(s){const b=await crypto.subtle.digest("SHA-256",new TextEncoder().encode("polish:"+s));return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,"0")).join("")}
 async function login(email,pw){const r=await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${FB_KEY}`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email,password:pw,returnSecureToken:true})});const j=await r.json();if(!r.ok)throw new Error(j.error&&j.error.message||"error");AUTH={idToken:j.idToken,refreshToken:j.refreshToken,exp:Date.now()+(+j.expiresIn)*1000};saveAuth()}
 async function tok(){if(!FB_KEY||!AUTH.refreshToken)return null;
  if(!AUTH.idToken||Date.now()>AUTH.exp-60000){try{const r=await fetch(`https://securetoken.googleapis.com/v1/token?key=${FB_KEY}`,{method:"POST",headers:{"Content-Type":"application/x-www-form-urlencoded"},body:"grant_type=refresh_token&refresh_token="+encodeURIComponent(AUTH.refreshToken)});const j=await r.json();if(!r.ok)throw 0;AUTH={idToken:j.id_token,refreshToken:j.refresh_token,exp:Date.now()+(+j.expires_in)*1000};saveAuth()}catch(e){AUTH={};saveAuth();updLogin();return null}}
@@ -185,7 +190,7 @@ function openM(p){const m=S.dates[p.id],d=S.done[p.id]||(S.done[p.id]={}),R=refE
  const md=document.getElementById("md");md.innerHTML=h;bk.classList.add("on");
  md.querySelector("#md").onchange=e=>{const v=e.target.value;if(v){S.starts=S.starts||{};S.dates[p.id]=v;push("dates/"+p.id,v);if(S.starts[p.id]&&S.starts[p.id]>v){S.starts[p.id]=v;push("starts/"+p.id,v)}save();render();openM(p)}};
  md.querySelectorAll("[data-i]").forEach(c=>c.onchange=()=>{const i=c.dataset.i;if(c.checked)d[i]=R;else delete d[i];push(`done/${p.id}/${i}`,c.checked?R:null);save();render();openM(p)});
- md.querySelectorAll("[data-dd]").forEach(x=>x.onchange=()=>{if(x.value){d[x.dataset.dd]=x.value;push(`done/${p.id}/${x.dataset.dd}`,x.value);save();render();openM(p)}});md.querySelector("#sd").onchange=e=>{const v=e.target.value;if(v){S.starts=S.starts||{};S.starts[p.id]=v;push("starts/"+p.id,v);{const f=add(v,STEPS.length-1);S.dates[p.id]=f;push("dates/"+p.id,f)}save();render();openM(p)}};md.querySelector("#ar").onchange=e=>{S.area=S.area||{};S.area[p.id]=e.target.value;push("area/"+p.id,e.target.value||null);save();render()};md.querySelector("#x").onclick=()=>bk.classList.remove("on");if(!canEdit()){md.querySelectorAll("input").forEach(i=>i.disabled=true);md.insertAdjacentHTML("afterbegin",'<div class="sub" style="color:#b4233f;font-weight:700">View only \u2014 use "Edit login" to make changes</div>')}}
+ md.querySelectorAll("[data-dd]").forEach(x=>x.onchange=()=>{if(x.value){d[x.dataset.dd]=x.value;push(`done/${p.id}/${x.dataset.dd}`,x.value);save();render();openM(p)}});md.querySelector("#sd").onchange=e=>{const v=e.target.value;if(v){S.starts=S.starts||{};S.starts[p.id]=v;push("starts/"+p.id,v);{const f=add(v,STEPS.length-1);S.dates[p.id]=f;push("dates/"+p.id,f)}save();render();openM(p)}};md.querySelector("#ar").onchange=e=>{S.area=S.area||{};S.area[p.id]=e.target.value;push("area/"+p.id,e.target.value||null);save();render()};md.querySelector("#x").onclick=()=>bk.classList.remove("on");if(!canEdit()){md.querySelectorAll("input").forEach(i=>i.disabled=true);md.insertAdjacentHTML("afterbegin",'<div class="sub" style="color:#b4233f;font-weight:700">View only \u2014 <button id="unl">'+(PINMODE?"Enter code":"Log in")+' to edit</button></div>');md.querySelector("#unl").onclick=()=>{pendingP=p;bk.classList.remove("on");lgb.click()}}}
 const bk=document.getElementById("bk");bk.onclick=e=>{if(e.target==bk)bk.classList.remove("on")};
 refEl.onchange=render;document.getElementById("today").onclick=()=>{refEl.value=iso(new Date());render()};
 document.getElementById("reset").onclick=async()=>{if(!canEdit()){alert("Please log in (Edit login) to reset data.");return}if(confirm(FB?"Clear ALL ticks and edited dates for EVERYONE (online)?":"Clear all ticks and edited dates?")){try{localStorage.removeItem(KEY)}catch(e){}if(FB){try{await fetch(`${FB}/${FPATH}.json`+await au(),{method:"DELETE"})}catch(e){}}location.reload()}};
@@ -238,12 +243,12 @@ $("rx").onclick=()=>$("rb").classList.remove("on");$("rb").onclick=e=>{if(e.targ
 $("rp").onclick=()=>{document.body.classList.add("rp");print();document.body.classList.remove("rp")};
 render();
 setSync(FB?"\u25cf Connecting\u2026":"\u25cf Offline mode (this device only)","#d9c4d2");
-const lgb=$("lgb"),lg=$("lg");
-function updLogin(){lgb.style.display=FB&&FB_KEY?"":"none";lgb.textContent=AUTH.refreshToken?"Log out":"Edit login"}updLogin();
-lgb.onclick=()=>{if(AUTH.refreshToken){AUTH={};saveAuth();updLogin();render()}else{$("lerr").textContent="";lg.classList.add("on");$("lem").focus()}};
-if(EDIT_EMAIL){$("lem").style.display="none";$("lpw").placeholder="4-digit PIN";$("lpw").inputMode="numeric";$("lpw").maxLength=4;lg.querySelector("h2").textContent="Enter PIN to edit"}
+const lgb=$("lgb"),lg=$("lg");if(/^#makepin=\d{4}$/.test(location.hash))sha(location.hash.slice(9)).then(x=>prompt("Copy this code into PIN_HASH in index.html:",x));
+function updLogin(){const g=(FB&&FB_KEY)||PIN_HASH||EDIT_CODE;lgb.style.display=g?"":"none";lgb.textContent=canEdit()?"Lock editing":(PINMODE?"Enter code":"Edit login")}updLogin();
+lgb.onclick=()=>{if(canEdit()&&((FB&&FB_KEY)||PIN_HASH||EDIT_CODE)){AUTH={};saveAuth();try{localStorage.removeItem("polish-pin")}catch(e){}updLogin();render()}else{$("lerr").textContent="";lg.classList.add("on");$("lem").focus()}};
+if(PINMODE){$("lem").style.display="none";$("lpw").placeholder=EDIT_EMAIL?"4-digit PIN":"Code";if(EDIT_EMAIL){$("lpw").inputMode="numeric";$("lpw").maxLength=4}lg.querySelector("h2").textContent="Enter code to edit"}
 $("lcan").onclick=()=>lg.classList.remove("on");
-$("lok").onclick=async()=>{if(EDIT_EMAIL&&!/^\d{4}$/.test($("lpw").value)){$("lerr").textContent="Enter the 4-digit PIN";return}try{await login(EDIT_EMAIL||$("lem").value.trim(),EDIT_EMAIL?"pin"+$("lpw").value:$("lpw").value);$("lpw").value="";lg.classList.remove("on");updLogin();pull()}catch(e){$("lerr").textContent=EDIT_EMAIL?"Wrong PIN, or too many attempts – wait a few minutes":"Login failed: "+(e.message||"check email / password")}};
+$("lok").onclick=async()=>{if(EDIT_EMAIL&&!/^\d{4}$/.test($("lpw").value)){$("lerr").textContent="Enter the 4-digit PIN";return}if(!(FB&&FB_KEY)&&(PIN_HASH||EDIT_CODE)){const v=$("lpw").value;const ok=EDIT_CODE?v===EDIT_CODE:(await sha(v))===PIN_HASH;if(ok){try{localStorage.setItem("polish-pin",PINTOK)}catch(e){}$("lpw").value="";lg.classList.remove("on");updLogin();render();reopen()}else $("lerr").textContent="Wrong code";return}try{await login(EDIT_EMAIL||$("lem").value.trim(),EDIT_EMAIL?"pin"+$("lpw").value:$("lpw").value);$("lpw").value="";lg.classList.remove("on");updLogin();pull();reopen()}catch(e){$("lerr").textContent=PINMODE?"Wrong PIN, or too many attempts – wait a few minutes":"Login failed: "+(e.message||"check email / password")}};
 $("lpw").onkeydown=e=>{if(e.key=="Enter")$("lok").click()};
 pull();live();setInterval(()=>{if(!window.sseOK)pull()},5000);setInterval(pull,60000);document.addEventListener("visibilitychange",()=>{if(!document.hidden){if(es&&es.readyState==2){es=null;live()}pull()}});addEventListener("online",()=>{if(es&&es.readyState==2){es=null;live()}pull()});
 </script></body></html>
